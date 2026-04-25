@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"matrix-gateway/internal/protocol"
 	"net/http"
 	"strconv"
 	"strings"
@@ -61,6 +62,19 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	})
 	h.HandleFunc("/shard-client.js", func(w http.ResponseWriter, r *http.Request) {
 		handleShardClientScript(w, r)
+	})
+	h.HandleFunc("/media-fallback", func(w http.ResponseWriter, r *http.Request) {
+		handleMediaFallback(w, r, cfg.RangeHandler, protocol.Codec{}, []byte("default-secret"), time.Minute)
+	})
+	h.HandleFunc("/omni-client.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript")
+		w.WriteHeader(http.StatusOK)
+		w.Write(omniClientScript)
+	})
+	h.HandleFunc("/omni-worker.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript")
+		w.WriteHeader(http.StatusOK)
+		w.Write(omniWorkerScript)
 	})
 
 	s := &http.Server{
