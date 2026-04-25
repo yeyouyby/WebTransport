@@ -79,7 +79,7 @@ func NewWebTransportServer(cfg WebTransportServerConfig) (*WebTransportServer, e
 			return
 		}
 		if cfg.Handler != nil {
-			go cfg.Handler(r.Context(), &webTransportSession{session: sess})
+			go cfg.Handler(sess.Context(), &webTransportSession{session: sess})
 		}
 	})
 	h3.Handler = mux

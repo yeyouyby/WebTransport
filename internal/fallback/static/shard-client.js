@@ -21,17 +21,52 @@
     "audio/wav": "audio"
   };
 
-  function fnv1a64(input) {
-    var h1 = 0xcbf29ce4;
-    var h2 = 0x84222325;
-    for (var i = 0; i < input.length; i++) {
-      var code = input.charCodeAt(i);
-      h1 ^= code;
-      h2 ^= code;
-      h1 = Math.imul(h1, 0x1000193);
-      h2 = Math.imul(h2, 0x1000193);
+  function utf8Bytes(input) {
+    if (typeof TextEncoder !== "undefined") {
+      return new TextEncoder().encode(input);
     }
-    return (h2 >>> 0) * 4294967296 + (h1 >>> 0);
+    var out = [];
+    for (var i = 0; i < input.length; i++) {
+      var c = input.charCodeAt(i);
+      if (c < 0x80) {
+        out.push(c);
+      } else if (c < 0x800) {
+        out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+      } else if (c < 0xd800 || c >= 0xe000) {
+        out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+      } else {
+        i += 1;
+        if (i >= input.length) {
+          out.push(0xef, 0xbf, 0xbd);
+          break;
+        }
+        var c2 = input.charCodeAt(i);
+        if (c2 < 0xdc00 || c2 > 0xdfff) {
+          out.push(0xef, 0xbf, 0xbd);
+          i -= 1;
+          continue;
+        }
+        var codePoint = 0x10000 + (((c & 0x3ff) << 10) | (c2 & 0x3ff));
+        out.push(
+          0xf0 | (codePoint >> 18),
+          0x80 | ((codePoint >> 12) & 0x3f),
+          0x80 | ((codePoint >> 6) & 0x3f),
+          0x80 | (codePoint & 0x3f)
+        );
+      }
+    }
+    return out;
+  }
+
+  function fnv1a64(input) {
+    var hash = 0xcbf29ce484222325n;
+    var prime = 0x100000001b3n;
+    var bytes = utf8Bytes(input);
+    for (var i = 0; i < bytes.length; i++) {
+      hash ^= BigInt(bytes[i]);
+      hash = BigInt.asUintN(64, hash * prime);
+    }
+    return hash;
   }
 
   function pickHost(hosts, key) {
@@ -42,7 +77,7 @@
       return hosts[0];
     }
     var best = hosts[0];
-    var bestScore = -1;
+    var bestScore = -1n;
     for (var i = 0; i < hosts.length; i++) {
       var score = fnv1a64(hosts[i] + ":" + key);
       if (score > bestScore) {

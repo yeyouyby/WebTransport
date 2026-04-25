@@ -55,6 +55,40 @@ func TestHandleFallbackWithHandler(t *testing.T) {
 	}
 }
 
+func TestHandleFallbackWithHandlerErrorBeforeWrite(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/fallback", nil)
+	req.Header.Set("Range", "bytes=0-3")
+	w := httptest.NewRecorder()
+
+	handleFallback(w, req, func(_ context.Context, _ uint64, _ uint32, _ io.Writer) error {
+		return errors.New("upstream failed")
+	})
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("unexpected status: %d", w.Code)
+	}
+}
+
+func TestHandleFallbackWithHandlerErrorAfterPartialWrite(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/fallback", nil)
+	req.Header.Set("Range", "bytes=0-3")
+	w := httptest.NewRecorder()
+
+	handleFallback(w, req, func(_ context.Context, _ uint64, _ uint32, writer io.Writer) error {
+		if _, err := writer.Write([]byte("test")); err != nil {
+			return err
+		}
+		return errors.New("upstream failed after write")
+	})
+
+	if w.Code != http.StatusPartialContent {
+		t.Fatalf("unexpected status: %d, body: %q", w.Code, w.Body.String())
+	}
+	if body := w.Body.String(); body != "test" {
+		t.Fatalf("unexpected body: %q", body)
+	}
+}
+
 func TestHandleShardConfig(t *testing.T) {
 	manager, err := sharding.NewManager(sharding.Config{
 		ImageHosts:    []string{"s1.api.com", "s2.api.com"},
@@ -88,5 +122,12 @@ func TestHandleShardClientScript(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "MatrixShardClient") {
 		t.Fatalf("script not served correctly")
+	}
+}
+
+func TestParseRangeHeaderOverflow(t *testing.T) {
+	_, _, ok := parseRangeHeader("bytes=0-18446744073709551615")
+	if ok {
+		t.Fatal("expected overflow range to fail")
 	}
 }

@@ -93,15 +93,45 @@ func handleFallback(w http.ResponseWriter, r *http.Request, handler RangeHandler
 	}
 	if handler != nil {
 		w.Header().Set("Content-Type", "application/octet-stream")
-		w.WriteHeader(http.StatusPartialContent)
-		if err := handler(r.Context(), offset, length, w); err != nil {
+		dw := &delayedPartialWriter{w: w}
+		if err := handler(r.Context(), offset, length, dw); err != nil {
+			if !dw.wroteHeader {
+				http.Error(w, "range stream failed", http.StatusBadGateway)
+			}
 			return
+		}
+		if !dw.wroteHeader {
+			dw.WriteHeader(http.StatusPartialContent)
 		}
 		return
 	}
 	resp := fmt.Sprintf("offset=%d length=%d", offset, length)
 	w.WriteHeader(http.StatusPartialContent)
 	_, _ = w.Write([]byte(resp))
+}
+
+type delayedPartialWriter struct {
+	w           http.ResponseWriter
+	wroteHeader bool
+}
+
+func (d *delayedPartialWriter) Header() http.Header {
+	return d.w.Header()
+}
+
+func (d *delayedPartialWriter) WriteHeader(statusCode int) {
+	if d.wroteHeader {
+		return
+	}
+	d.wroteHeader = true
+	d.w.WriteHeader(statusCode)
+}
+
+func (d *delayedPartialWriter) Write(p []byte) (int, error) {
+	if !d.wroteHeader {
+		d.WriteHeader(http.StatusPartialContent)
+	}
+	return d.w.Write(p)
 }
 
 func handleShardConfig(w http.ResponseWriter, r *http.Request, manager *sharding.Manager) {
@@ -147,7 +177,7 @@ func parseRangeHeader(header string) (uint64, uint32, bool) {
 		return 0, 0, false
 	}
 	length := end - start + 1
-	if length > uint64(^uint32(0)) {
+	if length == 0 || length > uint64(^uint32(0)) {
 		return 0, 0, false
 	}
 	return start, uint32(length), true

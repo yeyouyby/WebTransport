@@ -33,6 +33,8 @@ type SAPool struct {
 	nextIdx  int
 }
 
+const maxSAWeight = 100
+
 func NewSAPool(entries []SAEntry) (*SAPool, error) {
 	if len(entries) == 0 {
 		return nil, errors.New("empty sa entries")
@@ -41,6 +43,9 @@ func NewSAPool(entries []SAEntry) (*SAPool, error) {
 	for _, e := range entries {
 		if e.Weight <= 0 {
 			e.Weight = 1
+		}
+		if e.Weight > maxSAWeight {
+			e.Weight = maxSAWeight
 		}
 		if e.MaxQPS <= 0 {
 			e.MaxQPS = 1
