@@ -27,7 +27,33 @@
     }
     var out = [];
     for (var i = 0; i < input.length; i++) {
-      out.push(input.charCodeAt(i) & 0xff);
+      var c = input.charCodeAt(i);
+      if (c < 0x80) {
+        out.push(c);
+      } else if (c < 0x800) {
+        out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+      } else if (c < 0xd800 || c >= 0xe000) {
+        out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+      } else {
+        i += 1;
+        if (i >= input.length) {
+          out.push(0xef, 0xbf, 0xbd);
+          break;
+        }
+        var c2 = input.charCodeAt(i);
+        if (c2 < 0xdc00 || c2 > 0xdfff) {
+          out.push(0xef, 0xbf, 0xbd);
+          i -= 1;
+          continue;
+        }
+        var codePoint = 0x10000 + (((c & 0x3ff) << 10) | (c2 & 0x3ff));
+        out.push(
+          0xf0 | (codePoint >> 18),
+          0x80 | ((codePoint >> 12) & 0x3f),
+          0x80 | ((codePoint >> 6) & 0x3f),
+          0x80 | (codePoint & 0x3f)
+        );
+      }
     }
     return out;
   }

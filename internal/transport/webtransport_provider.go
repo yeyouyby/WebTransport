@@ -104,6 +104,10 @@ type webTransportSession struct {
 const maxReliableFrameBytes = 1 * 1024 * 1024
 
 func (s *webTransportSession) SendReliable(ctx context.Context, payload []byte) error {
+	if len(payload) > maxReliableFrameBytes {
+		return fmt.Errorf("reliable frame too large: %d > %d", len(payload), maxReliableFrameBytes)
+	}
+
 	stream, err := s.session.OpenStreamSync(ctx)
 	if err != nil {
 		return fmt.Errorf("open stream: %w", err)
