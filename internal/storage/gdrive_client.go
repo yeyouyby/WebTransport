@@ -93,7 +93,7 @@ func (c *GDriveClient) fetchOnce(ctx context.Context, sa SAEntry, offset uint64,
 		return nil, 0, fmt.Errorf("do request: %w", err)
 	}
 
-	if resp.StatusCode == http.StatusPartialContent || resp.StatusCode == http.StatusOK {
+	if resp.StatusCode == http.StatusPartialContent {
 		return resp.Body, resp.ContentLength, nil
 	}
 

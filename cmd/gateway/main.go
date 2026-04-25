@@ -29,6 +29,9 @@ func main() {
 	if len(cfg.Fallback.CertMap) == 0 {
 		log.Fatal("fallback cert map is empty, set TLS_CERT_MAP with exact SNI certificates")
 	}
+	if strings.TrimSpace(cfg.Storage.GDriveFileID) == "" {
+		log.Fatal("storage file ID is empty, set GDRIVE_FILE_ID")
+	}
 	if transport.CCPolicy(cfg.Transport.CCPolicy) == transport.CCPolicyBrutal {
 		log.Println("brutal policy enabled; forked quic-go is required and already expected via go.mod replace")
 	}

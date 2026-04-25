@@ -18,6 +18,8 @@ type Service struct {
 	cache        *prefetch.Manager
 }
 
+const maxReadRangeBytes = 16 * 1024 * 1024
+
 func NewService(saPool *storage.SAPool, gdriveClient *storage.GDriveClient, key, nonce []byte, cache *prefetch.Manager) *Service {
 	return &Service{
 		saPool:       saPool,
@@ -52,6 +54,13 @@ func (s *Service) StreamRange(ctx context.Context, offset uint64, length uint32,
 }
 
 func (s *Service) ReadRange(ctx context.Context, offset uint64, length uint32) ([]byte, error) {
+	if length == 0 {
+		return nil, fmt.Errorf("length must be greater than 0")
+	}
+	if length > maxReadRangeBytes {
+		return nil, fmt.Errorf("requested length %d exceeds max allowed %d", length, maxReadRangeBytes)
+	}
+
 	if payload, ok := s.cache.Get(offset, length); ok {
 		return payload, nil
 	}

@@ -101,6 +101,8 @@ type webTransportSession struct {
 	respBody io.Closer
 }
 
+const maxReliableFrameBytes = 1 * 1024 * 1024
+
 func (s *webTransportSession) SendReliable(ctx context.Context, payload []byte) error {
 	stream, err := s.session.OpenStreamSync(ctx)
 	if err != nil {
@@ -122,9 +124,12 @@ func (s *webTransportSession) ReceiveReliable(ctx context.Context) ([]byte, erro
 		return nil, fmt.Errorf("accept stream: %w", err)
 	}
 	defer stream.Close()
-	b, err := io.ReadAll(stream)
+	b, err := io.ReadAll(io.LimitReader(stream, maxReliableFrameBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read stream: %w", err)
+	}
+	if len(b) > maxReliableFrameBytes {
+		return nil, fmt.Errorf("reliable frame too large: %d > %d", len(b), maxReliableFrameBytes)
 	}
 	return b, nil
 }

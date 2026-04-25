@@ -21,17 +21,26 @@
     "audio/wav": "audio"
   };
 
-  function fnv1a64(input) {
-    var h1 = 0xcbf29ce4;
-    var h2 = 0x84222325;
-    for (var i = 0; i < input.length; i++) {
-      var code = input.charCodeAt(i);
-      h1 ^= code;
-      h2 ^= code;
-      h1 = Math.imul(h1, 0x1000193);
-      h2 = Math.imul(h2, 0x1000193);
+  function utf8Bytes(input) {
+    if (typeof TextEncoder !== "undefined") {
+      return new TextEncoder().encode(input);
     }
-    return (h2 >>> 0) * 4294967296 + (h1 >>> 0);
+    var out = [];
+    for (var i = 0; i < input.length; i++) {
+      out.push(input.charCodeAt(i) & 0xff);
+    }
+    return out;
+  }
+
+  function fnv1a64(input) {
+    var hash = 0xcbf29ce484222325n;
+    var prime = 0x100000001b3n;
+    var bytes = utf8Bytes(input);
+    for (var i = 0; i < bytes.length; i++) {
+      hash ^= BigInt(bytes[i]);
+      hash = BigInt.asUintN(64, hash * prime);
+    }
+    return hash;
   }
 
   function pickHost(hosts, key) {
@@ -42,7 +51,7 @@
       return hosts[0];
     }
     var best = hosts[0];
-    var bestScore = -1;
+    var bestScore = -1n;
     for (var i = 0; i < hosts.length; i++) {
       var score = fnv1a64(hosts[i] + ":" + key);
       if (score > bestScore) {
