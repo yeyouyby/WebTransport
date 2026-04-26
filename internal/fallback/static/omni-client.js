@@ -3,6 +3,7 @@ class OmniClient {
         this.workerPath = options.workerPath || '/omni-worker.js';
         this.maxWorkers = options.maxWorkers || (navigator.hardwareConcurrency > 4 ? 8 : 4);
         this.chunkSize = options.chunkSize || 1024 * 1024; // 1MB
+        this.secret = options.secret || "default-secret";
         this.workers = [];
         this.workerQueue = [];
         this.activeTasks = 0;
@@ -70,6 +71,7 @@ class OmniClient {
                 fileId,
                 offset,
                 length,
+                secret: this.secret,
                 useWebTransport: false
             }).then(data => ({ offset, data })));
         }
@@ -122,9 +124,7 @@ class OmniClient {
         const chunkPromises = await this.fetchMedia(url, fileId, totalSize, true);
 
         let chunksProcessed = 0;
-        chunkPromises.forEach(p => p.then(({ data }) => {
-            pendingAppends.push(data);
-            processAppends();
+        const onChunkFinished = () => {
             chunksProcessed++;
             if (chunksProcessed === chunkPromises.length) {
                 const checkFinished = setInterval(() => {
@@ -134,7 +134,16 @@ class OmniClient {
                     }
                 }, 100);
             }
-        }).catch(err => console.error("Chunk fetch error", err)));
+        };
+
+        chunkPromises.forEach(p => p.then(({ data }) => {
+            pendingAppends.push(data);
+            processAppends();
+            onChunkFinished();
+        }).catch(err => {
+            console.error("Chunk fetch error", err);
+            onChunkFinished();
+        }));
     }
 }
 window.OmniClient = OmniClient;
