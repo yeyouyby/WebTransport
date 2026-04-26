@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"matrix-gateway/internal/protocol"
 	"net/http"
 	"strconv"
 	"strings"
@@ -18,10 +19,12 @@ import (
 type RangeHandler func(ctx context.Context, offset uint64, length uint32, w io.Writer) error
 
 type ServerConfig struct {
-	Addr         string
-	CertMap      map[string]string
-	RangeHandler RangeHandler
-	ShardManager *sharding.Manager
+	FallbackSecret []byte
+	FallbackTTL    time.Duration
+	Addr           string
+	CertMap        map[string]string
+	RangeHandler   RangeHandler
+	ShardManager   *sharding.Manager
 }
 
 type Server struct {
@@ -61,6 +64,27 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	})
 	h.HandleFunc("/shard-client.js", func(w http.ResponseWriter, r *http.Request) {
 		handleShardClientScript(w, r)
+	})
+	h.HandleFunc("/media-fallback", func(w http.ResponseWriter, r *http.Request) {
+		secret := cfg.FallbackSecret
+		if len(secret) == 0 {
+			secret = []byte("default-secret")
+		}
+		ttl := cfg.FallbackTTL
+		if ttl == 0 {
+			ttl = time.Minute
+		}
+		handleMediaFallback(w, r, cfg.RangeHandler, protocol.Codec{}, secret, ttl)
+	})
+	h.HandleFunc("/omni-client.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript")
+		w.WriteHeader(http.StatusOK)
+		w.Write(omniClientScript)
+	})
+	h.HandleFunc("/omni-worker.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript")
+		w.WriteHeader(http.StatusOK)
+		w.Write(omniWorkerScript)
 	})
 
 	s := &http.Server{
