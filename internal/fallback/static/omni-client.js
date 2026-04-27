@@ -7,6 +7,7 @@ class OmniClient {
         this.workers = [];
         this.workerQueue = [];
         this.activeTasks = 0;
+        this.taskIdCounter = 0;
 
         this.initWorkers();
     }
@@ -21,7 +22,7 @@ class OmniClient {
 
     onWorkerMessage(e) {
         const { type, payload } = e.data;
-        const workerEntry = this.workers.find(w => w.currentTask && w.currentTask.offset === payload.offset);
+        const workerEntry = this.workers.find(w => w.currentTask && w.currentTask.id === payload.taskId);
 
         if (workerEntry) {
             const task = workerEntry.currentTask;
@@ -47,6 +48,10 @@ class OmniClient {
             const task = this.workerQueue.shift();
             availableWorker.busy = true;
             availableWorker.currentTask = task;
+
+            // Pass the taskId into the worker so it can return it
+            task.config.taskId = task.id;
+
             availableWorker.worker.postMessage({ type: 'fetch', payload: task.config });
             this.activeTasks++;
         }
@@ -54,7 +59,8 @@ class OmniClient {
 
     scheduleChunk(config) {
         return new Promise((resolve, reject) => {
-            const task = { config, resolve, reject, offset: config.offset };
+            this.taskIdCounter++;
+            const task = { id: this.taskIdCounter, config, resolve, reject, offset: config.offset };
             this.workerQueue.push(task);
             this.processQueue();
         });
@@ -73,7 +79,7 @@ class OmniClient {
                 length,
                 secret: this.secret,
                 useWebTransport: false
-            }).then(data => ({ offset, data })));
+            }).then(data => ({ offset, data, length })));
         }
 
         if (!isVideo) {
@@ -106,19 +112,27 @@ class OmniClient {
         const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
         sourceBuffer.mode = 'segments';
 
-        let pendingAppends = [];
+        let pendingChunks = new Map();
+        let nextExpectedOffset = 0;
         let isAppending = false;
 
         const processAppends = async () => {
-            if (isAppending || pendingAppends.length === 0) return;
-            isAppending = true;
-            const data = pendingAppends.shift();
+            if (isAppending) return;
 
-            sourceBuffer.appendBuffer(data);
-            await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
+            if (pendingChunks.has(nextExpectedOffset)) {
+                isAppending = true;
+                const chunkInfo = pendingChunks.get(nextExpectedOffset);
+                pendingChunks.delete(nextExpectedOffset);
 
-            isAppending = false;
-            processAppends();
+                sourceBuffer.appendBuffer(chunkInfo.data);
+                await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
+
+                nextExpectedOffset += chunkInfo.length;
+                isAppending = false;
+
+                // Immediately try to process the next sequential piece
+                processAppends();
+            }
         };
 
         const chunkPromises = await this.fetchMedia(url, fileId, totalSize, true);
@@ -128,7 +142,7 @@ class OmniClient {
             chunksProcessed++;
             if (chunksProcessed === chunkPromises.length) {
                 const checkFinished = setInterval(() => {
-                    if (pendingAppends.length === 0 && !isAppending && mediaSource.readyState === 'open') {
+                    if (pendingChunks.size === 0 && !isAppending && mediaSource.readyState === 'open') {
                         mediaSource.endOfStream();
                         clearInterval(checkFinished);
                     }
@@ -136,8 +150,8 @@ class OmniClient {
             }
         };
 
-        chunkPromises.forEach(p => p.then(({ data }) => {
-            pendingAppends.push(data);
+        chunkPromises.forEach(p => p.then((chunkInfo) => {
+            pendingChunks.set(chunkInfo.offset, chunkInfo);
             processAppends();
             onChunkFinished();
         }).catch(err => {

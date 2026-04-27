@@ -79,6 +79,7 @@ self.onmessage = async (e) => {
             self.postMessage({
                 type: 'chunk_success',
                 payload: {
+                    taskId: payload.taskId,
                     offset: payload.offset,
                     data: dataBuffer
                 }
@@ -87,6 +88,7 @@ self.onmessage = async (e) => {
             self.postMessage({
                 type: 'chunk_error',
                 payload: {
+                    taskId: payload.taskId,
                     offset: payload.offset,
                     error: error.message
                 }
